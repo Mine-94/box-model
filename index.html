@@ -72,16 +72,16 @@
       model.position.sub(center);
       model.position.x += 0.8;
       model.position.y += 2.0;
-    
+
       model.rotation.x = Math.PI / 2;
-      model.scale.set(1.0, 1.0, 1.0);
+      model.scale.set(1.2, 1.2, 1.2);
       scene.add(model);
       modelRoot = model;
-    
+
       const mixer = new THREE.AnimationMixer(model);
       const clip = gltf.animations[0];
       const action = mixer.clipAction(clip);
-    
+
       action.play();
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
@@ -102,8 +102,7 @@
 
       if (intersects.length > 0) {
         const point = intersects[0].point;
-        const blendFactor = 0.2;
-        controls.target.lerp(point, blendFactor);
+        controls.target.copy(point); // 클릭한 곳을 중심으로 회전 (즉시 적용)
         controls.update();
       }
     });
