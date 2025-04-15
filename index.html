@@ -82,8 +82,7 @@
     let mixer = null;
 
     const loader = new GLTFLoader();
-    loader.load(
-      '/box.glb'
+    loader.load('.box-model/box.glb', (gltf) => {
         const model = gltf.scene;
 
         const box = new THREE.Box3().setFromObject(model);
@@ -97,6 +96,7 @@
         model.traverse((child) => {
           if (child.isMesh) {
             child.userData.untouchable = true;
+          }
         });
 
         scene.add(model);
