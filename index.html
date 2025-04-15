@@ -21,104 +21,143 @@
   </script>
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-    const canvas = document.getElementById('canvas');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
 
-    const scene = new THREE.Scene();
+const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(0, 1.5, 8);
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.5, 6);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 1.5);
-    const directional = new THREE.DirectionalLight(0xffffff, 2);
-    directional.position.set(5, 10, 7);
-    scene.add(ambient, directional);
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+directionalLight.position.set(5, 10, 7);
+scene.add(ambientLight, directionalLight);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.rotateSpeed = 1.5;
-    controls.enableZoom = true;
-    controls.enableRotate = true;
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.rotateSpeed = 1.0;
+controls.zoomSpeed = 0.8;
+controls.enableZoom = true;
+// 초기 설정
+controls.enableRotate = true;
+controls.enablePan = false;
+
+controls.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.PAN,
+};
+
+// 중심 고정 좌표
+const fixedTarget = new THREE.Vector3(-0.79, -1.368, -0.67);
+controls.target.copy(fixedTarget);
+controls.update();
+
+// 휠 클릭 시 rotate 끄고 pan만 활성
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button === 1) {
+    controls.enableRotate = false;
     controls.enablePan = true;
-    controls.mouseButtons = {
-      LEFT: THREE.MOUSE.ROTATE,
-      MIDDLE: THREE.MOUSE.PAN,
-      RIGHT: THREE.MOUSE.ROTATE,
-    };
-    controls.screenSpacePanning = true;
-    controls.minAzimuthAngle = -Infinity;
-    controls.maxAzimuthAngle = Infinity;
-    controls.minPolarAngle = -Infinity;
-    controls.maxPolarAngle = Infinity;
-    controls.target.set(0, 0.75, 0);
+  }
+});
+
+canvas.addEventListener('pointerup', (e) => {
+  if (e.button === 1) {
+    controls.enablePan = false;
+    controls.enableRotate = true;
+
+    // ✅ 패닝 후에도 중심점 되돌림 (target 고정)
+    controls.target.copy(fixedTarget);
     controls.update();
+  }
+});
 
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    let modelRoot = null;
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let modelRoot: THREE.Object3D | null = null;
+let mixer: THREE.AnimationMixer | null = null;
 
-    const loader = new GLTFLoader();
-    loader.load('box.glb', (gltf) => {
-      const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      model.position.sub(center);
-      model.position.x += 0.8;
-      model.position.y += 2.0;
+const loader = new GLTFLoader();
+loader.load(
+  '/box.glb',
+  (gltf: GLTF) => {
+    const model = gltf.scene;
 
-      model.rotation.x = Math.PI / 2;
-      model.scale.set(1.5, 1.5, 1.5);
-      scene.add(model);
-      modelRoot = model;
+    const box = new THREE.Box3().setFromObject(model);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    model.position.sub(center);
 
-      const mixer = new THREE.AnimationMixer(model);
-      const clip = gltf.animations[0];
-      const action = mixer.clipAction(clip);
+    model.scale.set(1.5, 1.5, 1.5);
+    model.rotation.x = Math.PI / 2;
 
-      action.play();
-      action.setLoop(THREE.LoopOnce, 1);
-      action.clampWhenFinished = true;
-
-      mixer.setTime(clip.duration);
-      animate();
-    }, undefined, (error) => {
-      console.error('모델 로드 에러:', error);
-    });
-
-    canvas.addEventListener('pointerdown', (event) => {
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(pointer, camera);
-      const intersects = raycaster.intersectObjects(scene.children.filter(obj => obj !== modelRoot), true);
-
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-        const blendFactor = 0.3;
-        controls.target.lerp(point, blendFactor);
-        controls.update();
+    model.traverse((child: THREE.Object3D) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.userData.untouchable = true;
       }
     });
 
-    function animate() {
-      requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
+    scene.add(model);
+    modelRoot = model;
+
+    // ✅ 애니메이션: 한 번만 재생하고 마지막 상태 유지
+    if (gltf.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      const clip = gltf.animations[0];
+      const action = mixer.clipAction(clip);
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+      action.play();
     }
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    animate();
+  },
+  undefined,
+  (error: unknown) => {
+    console.error('모델 로딩 에러:', error);
+  }
+);
+
+canvas.addEventListener('pointerdown', (event) => {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObjects(
+    scene.children.filter((obj) => !obj.userData?.untouchable),
+    true
+  );
+
+  if (intersects.length > 0) {
+    console.log('배경 클릭됨:', intersects[0].point);
+  }
+});
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta = clock.getDelta();
+  if (mixer) mixer.update(delta);
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
   </script>
 </body>
 </html>
